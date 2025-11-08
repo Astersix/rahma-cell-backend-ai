@@ -22,6 +22,18 @@ Install required library.
 pip install -r requirements.txt
 ```
 
+Generate dummy data (actual data is more recommended).
+
+```bash
+python  /data/generate_dummy.py
+```
+
+Train the model.
+
+```bash
+python  /src/train.py
+```
+
 ## License
 
 [MIT](https://choosealicense.com/licenses/mit/)
