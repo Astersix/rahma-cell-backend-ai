@@ -9,9 +9,9 @@ from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error
 
 # konfigurasi
-FILE_PATH = '../data/data_historis.csv'
+FILE_PATH = 'data/data_historis.csv'
 # tiap produk memiliki tren tersendiri
-PRODUK_ID = 'A001'
+PRODUCT_ID = 'A001'
 # ambil data dari N hari untuk prediksi 1 hari ke depan
 N_STEPS = 30
 # pembagian data untuk latihan (contoh: 0.8, 0.2)
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     # menjalankan fungsi utama
     processed_data = loadPreprocessData(
         file_path=FILE_PATH,
-        produk_id=PRODUK_ID,
+        produk_id=PRODUCT_ID,
         n_steps=N_STEPS,
         test_size=TEST_SIZE
     )
@@ -141,7 +141,7 @@ if __name__ == "__main__":
         plt.figure(figsize=(12, 6))
         plt.plot(y_test_r, label='data aktual (y_test)', color='green', marker='o', markersize=5)
         plt.plot(y_pred_r, label='data prediksi (y_pred)', color='red', linestyle='--', marker='x', markersize=5)
-        plt.title(f"perbadingan prediksi dan aktual (produk: {PRODUK_ID})")
+        plt.title(f"perbadingan prediksi dan aktual (produk: {PRODUCT_ID})")
         plt.xlabel("Hari")
         plt.ylabel("Terjual")
         
@@ -159,15 +159,15 @@ if __name__ == "__main__":
         plt.grid(True)
         
         # simpan grafik
-        plot_filename = f'grafik_prediksi_{PRODUK_ID}.png'
+        plot_filename = f'grafik_prediksi_{PRODUCT_ID}.png'
         plt.savefig(plot_filename)
         plt.close()
 
         # simpan model dan scaler untuk api
-        os.makedirs('../models', exist_ok=True)
+        os.makedirs('models', exist_ok=True)
 
-        joblib.dump(model, "../models/svr_model.joblib")
-        joblib.dump(scaler_X, "../models/scaler_X.joblib")
-        joblib.dump(scaler_y, "../models/scaler_y.joblib")
+        joblib.dump(model, f"models/svr_model_{PRODUCT_ID}.joblib")
+        joblib.dump(scaler_X, f"models/scaler_X_{PRODUCT_ID}.joblib")
+        joblib.dump(scaler_y, f"models/scaler_y_{PRODUCT_ID}.joblib")
         print("model dan scaler berhasil disimpan")
         
