@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
-from contextlib import asynccontextmanager
+from functools import lru_cache
+# from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from typing import List
 import joblib
@@ -7,87 +8,79 @@ import numpy as np
 import os
 
 # konfigurasi
-N_STEPS = 30
-PRODUCT_ID = 'A001'
+N_STEPS = 90
 MODEL_PATH = "models"
+PREDICTION_HORIZON = 30
+
+@lru_cache(maxsize=100)
+def getModelResource(product_variant_id: str):
+    path_model = os.path.join(MODEL_PATH, f"svr_model_{product_variant_id}.joblib")
+    path_scaler_x = os.path.join(MODEL_PATH, f"scaler_X_{product_variant_id}.joblib")
+    path_scaler_y = os.path.join(MODEL_PATH, f"scaler_y_{product_variant_id}.joblib")
+    
+    if not os.path.exists(path_model):
+        return None
+
+    try:
+        model = joblib.load(path_model)
+        scaler_x = joblib.load(path_scaler_x)
+        scaler_y = joblib.load(path_scaler_y)
+        return model, scaler_x, scaler_y
+    
+    except Exception as e:
+        print(f"Error loading model {product_variant_id}: {e}")
+        raise RuntimeError(f"Gagal memuat model {product_variant_id}")
 
 class PredictRequest(BaseModel):
+    product_variant_id: str
     history: List[float]
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("server is loading the model...") 
-    
-    try:
-        app.state.models = {}
-        app.state.models['svr_model'] = joblib.load(
-            os.path.join(MODEL_PATH, f"svr_model_{PRODUCT_ID}.joblib")
-        )
-        app.state.models['scaler_X'] = joblib.load(
-            os.path.join(MODEL_PATH, f"scaler_X_{PRODUCT_ID}.joblib")
-        )
-        app.state.models['scaler_y'] = joblib.load(
-            os.path.join(MODEL_PATH, f"scaler_y_{PRODUCT_ID}.joblib")
-        )
-        print("successfully load model and scaler on to app.state")
-        
-    except Exception as e:
-        print(f"failed to load model when startup: {e}")
-        app.state.models = {}
-    
-    yield
-    
-    print("turning off server...")
-    if hasattr(app.state, 'models'):
-        app.state.models.clear()
-        
-    print("finished cleanup")
-    
-app = FastAPI(lifespan=lifespan)
-
-@app.get("/")
-def readRoot():
-    return {
-        "message": f"Stock prediction for product: {PRODUCT_ID}"
-    }
+app = FastAPI()
 
 @app.post("/predict/")
 async def predictStock(request_data: PredictRequest, req: Request):
-    history_data = request_data.history
+    product_variant_id = request_data.product_variant_id
+    history = request_data.history
     
-    if len(history_data) != N_STEPS:
+    if len(history) < N_STEPS:
         raise HTTPException(
             status_code=400,
-            detail=f"History data should be filled with {N_STEPS} data points."
+            detail=f"History data should be filled with at least {N_STEPS} data points to make a prediction."
         )
         
-    try:
-        model = req.app.state.models['svr_model']
-        scaler_X = req.app.state.models['scaler_X']
-        scaler_y = req.app.state.models['scaler_y']
-    except (AttributeError, KeyError):
+    resources = getModelResource(product_variant_id)
+    
+    if resources is None:
         raise HTTPException(
-            status_code=503,
-            detail="Server is initiating or model failed to load."
+            status_code=404, 
+            detail=f"Model for product variant: '{product_variant_id}' not found."
         )
     
-    try:
-        input_array = np.array(history_data).reshape(1, -1)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Data tidak valid. Error: {e}")
-
-    input_scaled = scaler_X.transform(input_array)
+    model, scaler_X, scaler_y = resources
     
-    predicted_scaled = model.predict(input_scaled)
-
-    predicted_real = scaler_y.inverse_transform(predicted_scaled.reshape(-1, 1))
-
-    prediction_value = predicted_real[0][0]
-    prediction_rounded = round(prediction_value)
-
+    current_window = list(history[-N_STEPS:])
+    
+    predictions_list = []
+    
+    for _ in range(PREDICTION_HORIZON):
+        window_np = np.array(current_window).reshape(1, -1)
+        
+        window_scaled = scaler_X.transform(window_np)
+        
+        pred_scaled = model.predict(window_scaled)
+        pred_real_np = scaler_y.inverse_transform(pred_scaled.reshape(-1, 1))
+        
+        pred_real_float = pred_real_np[0][0]
+        
+        pred_cleaned = round(pred_real_float)
+        pred_cleaned = max(0, pred_cleaned)
+        
+        predictions_list.append(pred_cleaned)
+        
+        current_window.pop(0)
+        current_window.append(pred_cleaned)
+        
     return {
-        "product_id": PRODUCT_ID,
-        "input_history": history_data,
-        "prediction_raw": prediction_value,
-        "prediction_rounded": prediction_rounded
+        "product_variant_id": product_variant_id,
+        "prediction": predictions_list
     }

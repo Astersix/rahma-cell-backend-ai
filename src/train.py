@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error
@@ -11,10 +11,9 @@ from sklearn.metrics import mean_squared_error
 # konfigurasi
 FILE_PATH = 'data/data_historis.csv'
 # tiap produk memiliki tren tersendiri
-PRODUCT_ID = 'A001'
+PRODUCT_ID = 'C001'
 # ambil data dari N hari untuk prediksi 1 hari ke depan
-N_STEPS = 30
-# pembagian data untuk latihan (contoh: 0.8, 0.2)
+N_STEPS = 90
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
 
@@ -87,11 +86,14 @@ def loadPreprocessData(file_path, produk_id, n_steps, test_size):
     scaler_y = StandardScaler()
 
     # fit scaler pada data train
+    
     X_train_scaled = scaler_X.fit_transform(X_train)
+    X_train_scaled = np.nan_to_num(X_train_scaled, nan=0.0)
     y_train_scaled = scaler_y.fit_transform(y_train)
 
     # menggunakan scaler yang sudah di-fit untuk men-transform data test
     X_test_scaled = scaler_X.transform(X_test)
+    X_test_scaled = np.nan_to_num(X_test_scaled, nan=0.0)
     y_test_scaled = scaler_y.transform(y_test)
     
     # return semua data yang sudah diproses dan scaler_y
@@ -119,13 +121,34 @@ if __name__ == "__main__":
         print(f"Bentuk y_test (target, scaled): \t{y_test_s.shape}")
         
         # pakai rbf untuk tren non-linear
-        model = SVR(kernel='rbf', C=1.0)
-        # latih model pada data training (scaled)
-        # pakai ravel untuk ubah data kembali ke 1D untuk memenuhi .fit()
-        model.fit(X_train_s, y_train_s.ravel())
+        svr_base = SVR(kernel='rbf')
+        
+        params_grid = {
+            'C': [1, 10, 100, 1000],
+            'gamma': [0.1, 0.01, 0.001]
+        }
+        
+        grid_search = GridSearchCV(
+            estimator=svr_base,
+            param_grid=params_grid,
+            cv=3,
+            scoring='neg_mean_squared_error',
+            verbose=2
+        )
+        
+        grid_search.fit(X_train_s, y_train_s.ravel())
+        
+        best_model = grid_search.best_estimator_
+        
+        print(f"best params: {grid_search.best_params_}")
+        
+        # model = SVR(kernel='rbf', C=1.0)
+        # # latih model pada data training (scaled)
+        # # pakai ravel untuk ubah data kembali ke 1D untuk memenuhi .fit()
+        # model.fit(X_train_s, y_train_s.ravel())
         
         # prediksi (scaled) pada data test
-        y_pred_s = model.predict(X_test_s)
+        y_pred_s = best_model.predict(X_test_s)
         
         # ubah scaled menjadi real (sebelum scaling)
         y_pred_r = scaler_y.inverse_transform(y_pred_s.reshape(-1,1))
@@ -166,7 +189,7 @@ if __name__ == "__main__":
         # simpan model dan scaler untuk api
         os.makedirs('models', exist_ok=True)
 
-        joblib.dump(model, f"models/svr_model_{PRODUCT_ID}.joblib")
+        joblib.dump(best_model, f"models/svr_model_{PRODUCT_ID}.joblib")
         joblib.dump(scaler_X, f"models/scaler_X_{PRODUCT_ID}.joblib")
         joblib.dump(scaler_y, f"models/scaler_y_{PRODUCT_ID}.joblib")
         print("model dan scaler berhasil disimpan")
