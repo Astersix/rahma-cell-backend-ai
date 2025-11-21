@@ -1,196 +1,143 @@
-import joblib
-import os
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import joblib
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVR
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
+import os
 
 # konfigurasi
-FILE_PATH = 'data/data_historis.csv'
-# tiap produk memiliki tren tersendiri
-PRODUCT_ID = 'C001'
-# ambil data dari N hari untuk prediksi 1 hari ke depan
-N_STEPS = 90
-TEST_SIZE = 0.2
-RANDOM_STATE = 42
+FILE_PATH = 'data/data_penjualan_dummy.csv'
+MODEL_PATH = 'models/'
+MIN_DATA_POINTS = 50 
 
-def createSlidingWindow(data, n_steps):
-    X_list, y_list = [], []
+def load_data(filepath):
+    df = pd.read_csv(filepath)
+    df['date'] = pd.to_datetime(df['date'])
+    return df
+
+def feature_engineering(df):
+    # fitur waktu
+    df['day_of_week'] = df['date'].dt.dayofweek
+    df['day_of_month'] = df['date'].dt.day
+    df['is_weekend'] = df['day_of_week'].apply(lambda x: 1 if x >= 5 else 0)
     
-    if len(data) <= n_steps:
-        print(f"Error: Data tidak cukup (panjang: {len(data)}) untuk window size ({n_steps}).")
-        return np.array(X_list), np.array(y_list)
-
-    for i in range(len(data) - n_steps):
-        end_ix = i + n_steps
-        seq_x = data[i:end_ix]
-        seq_y = data[end_ix]
-        X_list.append(seq_x)
-        y_list.append(seq_y)
-        
-    return np.array(X_list), np.array(y_list)
-
-def loadPreprocessData(file_path, produk_id, n_steps, test_size):
-    try:
-        # ambil dan proses data
-        print(f"Membaca data dari '{file_path}'...")
-        df = pd.read_csv(file_path)
-    except FileNotFoundError:
-        print(f"Error: File tidak ditemukan di '{file_path}'.")
-        print("Pastikan file 'data_historis.csv' ada di dalam folder 'data/'.")
-        return None
-
-    df['tanggal'] = pd.to_datetime(df['tanggal'], format='%d-%m-%Y')
+    # fitur lag dan rolling
+    df['lag_1'] = df['quantity'].shift(1)
+    df['lag_7'] = df['quantity'].shift(7)
+    df['rolling_mean_7'] = df['quantity'].shift(1).rolling(window=7).mean()
+    df['rolling_std_7'] = df['quantity'].shift(1).rolling(window=7).std()
     
-    # 2. saring data
-    print(f"Melakukan filter untuk id_produk == '{produk_id}'...")
-    df_produk = df[df['id_produk'] == produk_id].copy()
-    df_produk.sort_values(by='tanggal', inplace=True)
+    df = df.dropna()
+    return df
+
+def train_for_variant(df_variant, variant_id):
+    print(f"\nprocessing variant: {variant_id}")
     
-    if df_produk.empty:
-        print(f"Error: Tidak ditemukan data untuk produk '{produk_id}'.")
-        return None
+    # cek apakah data cukup
+    if len(df_variant) < MIN_DATA_POINTS:
+        print(f"skip: insufficient data ({len(df_variant)} rows)")
+        return
 
-    time_series = df_produk['jumlah_terjual'].values
-    print(f"Data time series asli ditemukan: {len(time_series)} baris.")
-
-    # menerapkan Sliding Window
-    print(f"Menerapkan sliding window dengan n_steps = {n_steps}...")
-    X, y = createSlidingWindow(time_series, n_steps)
+    df_processed = feature_engineering(df_variant.copy())
     
-    if X.size == 0 or y.size == 0:
-        print("Gagal membuat dataset X dan y. Proses dihentikan.")
-        return None
-        
-    # reshape 'y' menjadi 2D agar bisa di-scale oleh
-    # StandardScaler/MinMaxScaler (yang mengharapkan data 2D)
-    y = y.reshape(-1, 1)
+    # cek lagi setelah dropna
+    if len(df_processed) < 30:
+        print("skip: insufficient data after processing")
+        return
 
-    # membagi Data (Train & Test)
-    # Untuk time series, kita tidak boleh mengacak (shuffle=False).
-    # Data tes harus merupakan data terbaru.
-    print(f"Membagi data: {1-test_size:.0%} train, {test_size:.0%} test (tanpa shuffle)...")
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, 
-        test_size=test_size, 
-        shuffle=False,
-        random_state=RANDOM_STATE
-    )
-
-    # scaling Data
-    # Inisialisasi scaler terpisah untuk X dan y
+    # definisi fitur dan target
+    features = ['price', 'category_id', 'day_of_week', 'day_of_month', 'is_weekend', 
+                'lag_1', 'lag_7', 'rolling_mean_7', 'rolling_std_7']
+    target = 'quantity'
+    
+    X = df_processed[features]
+    y = df_processed[target]
+    
+    # bagi data training dan testing
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    
+    # penskalaan (scaling)
     scaler_X = StandardScaler()
     scaler_y = StandardScaler()
-
-    # fit scaler pada data train
     
     X_train_scaled = scaler_X.fit_transform(X_train)
-    X_train_scaled = np.nan_to_num(X_train_scaled, nan=0.0)
-    y_train_scaled = scaler_y.fit_transform(y_train)
-
-    # menggunakan scaler yang sudah di-fit untuk men-transform data test
+    y_train_scaled = scaler_y.fit_transform(y_train.values.reshape(-1, 1))
     X_test_scaled = scaler_X.transform(X_test)
-    X_test_scaled = np.nan_to_num(X_test_scaled, nan=0.0)
-    y_test_scaled = scaler_y.transform(y_test)
     
-    # return semua data yang sudah diproses dan scaler_y
-    # (scaler_y akan dibutuhkan nanti untuk inverse_transform prediksi)
-    return X_train_scaled, X_test_scaled, y_train_scaled, y_test_scaled, scaler_X, scaler_y
+    # training menggunakan gridsearch
+    param_grid = {
+        'C': [0.1, 1, 10, 100],
+        'gamma': ['scale', 0.1],
+        'epsilon': [0.1, 0.2]
+    }
+    
+    svr = SVR(kernel='rbf')
+    grid_search = GridSearchCV(svr, param_grid, cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
+    grid_search.fit(X_train_scaled, y_train_scaled.ravel())
+    
+    best_model = grid_search.best_estimator_
+    
+    # evaluasi model
+    y_pred_scaled = best_model.predict(X_test_scaled)
+    y_pred = scaler_y.inverse_transform(y_pred_scaled.reshape(-1, 1))
+    
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = np.sqrt(mse)
+    
+    # tampilkan skor error ke terminal
+    print(f"success. mse: {mse:.4f}, rmse: {rmse:.4f}")
 
-# eksekusi
+    # pembuatan grafik (plotting)
+    plt.figure(figsize=(10, 5))
+    
+    # plot data aktual (hijau)
+    plt.plot(y_test.reset_index(drop=True), label='Actual', color='green', alpha=0.7)
+    
+    # plot data prediksi (merah)
+    plt.plot(y_pred, label='Prediction', color='red', linestyle='--', alpha=0.8)
+    
+    # judul grafik dengan skor error
+    plt.title(f'Prediction vs Actual - {variant_id}\nMSE: {mse:.2f}, RMSE: {rmse:.2f}')
+    plt.xlabel('Data Point (Test Set)')
+    plt.ylabel('Quantity')
+    
+    plt.legend() # tampilkan legenda
+    plt.grid(True, alpha=0.3)
+    
+    os.makedirs(MODEL_PATH, exist_ok=True)
+    plt.savefig(f'{MODEL_PATH}plot_{variant_id}.png')
+    plt.close()
+    
+    # simpan model dan scaler
+    joblib.dump(best_model, f'{MODEL_PATH}svr_model_{variant_id}.joblib')
+    joblib.dump(scaler_X, f'{MODEL_PATH}scaler_X_{variant_id}.joblib')
+    joblib.dump(scaler_y, f'{MODEL_PATH}scaler_y_{variant_id}.joblib')
+
 if __name__ == "__main__":
-    # menjalankan fungsi utama
-    processed_data = loadPreprocessData(
-        file_path=FILE_PATH,
-        produk_id=PRODUCT_ID,
-        n_steps=N_STEPS,
-        test_size=TEST_SIZE
-    )
+    print("--- starting batch training ---")
+    
+    # muat dataset utama
+    try:
+        df_all = load_data(FILE_PATH)
+    except FileNotFoundError:
+        print("error: csv file not found")
+        exit()
+        
+    # ambil semua varian unik
+    unique_variants = df_all['product_variant_id'].unique()
+    print(f"total variants: {len(unique_variants)}")
+    
+    # loop untuk setiap varian
+    for i, variant_id in enumerate(unique_variants):
+        print(f"\n[{i+1}/{len(unique_variants)}] checking variant {variant_id}")
+        df_variant = df_all[df_all['product_variant_id'] == variant_id].sort_values('date')
+        
+        try:
+            train_for_variant(df_variant, variant_id)
+        except Exception as e:
+            print(f"failed: {str(e)}")
 
-    if processed_data:
-        # memecah data
-        X_train_s, X_test_s, y_train_s, y_test_s, scaler_X, scaler_y = processed_data
-        
-        print("shapes")
-        print(f"Bentuk X_train (fitur, scaled): \t{X_train_s.shape}")
-        print(f"Bentuk y_train (target, scaled): \t{y_train_s.shape}")
-        print(f"Bentuk X_test (fitur, scaled): \t\t{X_test_s.shape}")
-        print(f"Bentuk y_test (target, scaled): \t{y_test_s.shape}")
-        
-        # pakai rbf untuk tren non-linear
-        svr_base = SVR(kernel='rbf')
-        
-        params_grid = {
-            'C': [1, 10, 100, 1000],
-            'gamma': [0.1, 0.01, 0.001]
-        }
-        
-        grid_search = GridSearchCV(
-            estimator=svr_base,
-            param_grid=params_grid,
-            cv=3,
-            scoring='neg_mean_squared_error',
-            verbose=2
-        )
-        
-        grid_search.fit(X_train_s, y_train_s.ravel())
-        
-        best_model = grid_search.best_estimator_
-        
-        print(f"best params: {grid_search.best_params_}")
-        
-        # model = SVR(kernel='rbf', C=1.0)
-        # # latih model pada data training (scaled)
-        # # pakai ravel untuk ubah data kembali ke 1D untuk memenuhi .fit()
-        # model.fit(X_train_s, y_train_s.ravel())
-        
-        # prediksi (scaled) pada data test
-        y_pred_s = best_model.predict(X_test_s)
-        
-        # ubah scaled menjadi real (sebelum scaling)
-        y_pred_r = scaler_y.inverse_transform(y_pred_s.reshape(-1,1))
-        y_test_r = scaler_y.inverse_transform(y_test_s)
-        
-        # hitung selisih antara prediksi dan test
-        mse = mean_squared_error(y_test_r, y_pred_r)
-        rmse = np.sqrt(mse)
-        print(f"skor mse: {mse:.4f}")
-        print(f"skor rmse: {rmse:.4f}")
-        
-        # buat grafik
-        plt.figure(figsize=(12, 6))
-        plt.plot(y_test_r, label='data aktual (y_test)', color='green', marker='o', markersize=5)
-        plt.plot(y_pred_r, label='data prediksi (y_pred)', color='red', linestyle='--', marker='x', markersize=5)
-        plt.title(f"perbadingan prediksi dan aktual (produk: {PRODUCT_ID})")
-        plt.xlabel("Hari")
-        plt.ylabel("Terjual")
-        
-        Y_STEP = 5
-        X_STEP = 7
-        max_y_val = max(np.max(y_test_r), np.max(y_pred_r))
-        max_x_val = len(y_test_r)
-        y_ticks = np.arange(0, max_y_val + Y_STEP, Y_STEP)
-        x_ticks = np.arange(0, max_x_val + X_STEP, X_STEP)
-
-        plt.yticks(y_ticks)
-        plt.xticks(x_ticks)
-        
-        plt.legend()
-        plt.grid(True)
-        
-        # simpan grafik
-        plot_filename = f'grafik_prediksi_{PRODUCT_ID}.png'
-        plt.savefig(plot_filename)
-        plt.close()
-
-        # simpan model dan scaler untuk api
-        os.makedirs('models', exist_ok=True)
-
-        joblib.dump(best_model, f"models/svr_model_{PRODUCT_ID}.joblib")
-        joblib.dump(scaler_X, f"models/scaler_X_{PRODUCT_ID}.joblib")
-        joblib.dump(scaler_y, f"models/scaler_y_{PRODUCT_ID}.joblib")
-        print("model dan scaler berhasil disimpan")
-        
+    print("\n--- finished ---")

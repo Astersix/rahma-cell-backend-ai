@@ -1,69 +1,88 @@
-import csv
-import random
+import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
+import ulid
 
-# --- Konfigurasi ---
-NAMA_FILE = 'data_historis.csv'
-TANGGAL_AWAL = datetime(2024, 1, 1)
-JUMLAH_HARI = 350  # 350 hari x 5 produk = 1750 baris data
-MULTIPLIER_AKHIR_PEKAN = 1.8  # Penjualan 80% lebih tinggi di akhir pekan
+# konfigurasi
+OUTPUT_FILE = 'data_penjualan_dummy.csv'
+N_ROWS = 1000
+N_VARIANTS = 5 
 
-# Konfigurasi produk [id_produk] -> {min_jual, max_jual}
-PRODUK_CONFIG = {
-    'A001': {'min': 10, 'max': 20},  # Laris
-    'A002': {'min': 8, 'max': 15},   # Cukup Laris
-    'B001': {'min': 3, 'max': 7},    # Sedang
-    'B002': {'min': 1, 'max': 4},    # Kurang Laris
-    'C001': {'min': 1, 'max': 3}     # Niche/Jarang
-}
+def generate_data():
+    print(f"generating {N_ROWS} rows of dummy data with ulid...")
 
-list_id_produk = list(PRODUK_CONFIG.keys())
-data_rows = []
+    # setup tanggal
+    end_date = datetime.now()
+    dates = [end_date - timedelta(days=x) for x in range(N_ROWS)]
+    dates.reverse()
 
-print(f"Memulai pembuatan data untuk file '{NAMA_FILE}'...")
-
-# 1. Buat semua baris data dalam memori
-for i in range(JUMLAH_HARI):
-    current_date = TANGGAL_AWAL + timedelta(days=i)
+    df = pd.DataFrame()
+    df['date'] = dates
     
-    # Cek apakah akhir pekan (5 = Sabtu, 6 = Minggu)
-    day_of_week = current_date.weekday()
-    is_weekend = (day_of_week == 5 or day_of_week == 6)
+    # --- BAGIAN GENERATE ULID ---
+    variants_db = {}
     
-    # Buat entri untuk setiap produk pada hari itu
-    for id_produk in list_id_produk:
-        config = PRODUK_CONFIG[id_produk]
+    print("generated variant ids (ulid):")
+    for i in range(N_VARIANTS):
+        # PERBAIKAN DI SINI:
+        # Gunakan ulid.ULID() untuk membuat instance baru
+        u_id = str(ulid.ULID()) 
         
-        # Tentukan penjualan dasar
-        penjualan_dasar = random.randint(config['min'], config['max'])
+        # tentukan karakteristik
+        base_price = np.random.randint(50, 150) * 1000 
+        popularity = np.random.randint(0, 20) 
         
-        # Terapkan tren akhir pekan
-        if is_weekend:
-            jumlah_terjual = int(penjualan_dasar * MULTIPLIER_AKHIR_PEKAN)
-        else:
-            jumlah_terjual = penjualan_dasar
-            
-        # Tambahkan sedikit "noise" agar tidak terlalu seragam
-        noise = random.randint(-1, 2)
-        jumlah_terjual = max(0, jumlah_terjual + noise) # Pastikan tidak negatif
-        
-        # Format tanggal DD-MM-YYYY
-        tanggal_str = current_date.strftime('%d-%m-%Y')
-        
-        data_rows.append([tanggal_str, id_produk, jumlah_terjual])
+        variants_db[u_id] = {
+            'base_price': base_price,
+            'popularity': popularity
+        }
+        print(f"- {u_id} (price: {base_price}, popularity: {popularity})")
 
-# 2. Tulis semua data ke file CSV
-try:
-    with open(NAMA_FILE, 'w', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        
-        # Tulis Header
-        writer.writerow(['tanggal', 'id_produk', 'jumlah_terjual'])
-        
-        # Tulis Data
-        writer.writerows(data_rows)
-        
-    print(f"Selesai! File '{NAMA_FILE}' berhasil dibuat dengan {len(data_rows)} baris data.")
+    available_ulids = list(variants_db.keys())
 
-except IOError as e:
-    print(f"Error: Gagal menulis file. {e}")
+    # assign variant id secara acak
+    df['product_variant_id'] = np.random.choice(available_ulids, N_ROWS)
+    
+    df['category_id'] = 101 
+    
+    # helper functions
+    def get_base_price(uid):
+        return variants_db[uid]['base_price']
+    
+    def get_popularity(uid):
+        return variants_db[uid]['popularity']
+
+    # map karakteristik ke dataframe
+    df['base_price_ref'] = df['product_variant_id'].apply(get_base_price)
+    df['popularity_ref'] = df['product_variant_id'].apply(get_popularity)
+    
+    # simulasi harga
+    df['price'] = df['base_price_ref'] + np.random.normal(0, 3000, N_ROWS)
+    df['price'] = df['price'].round(-2) 
+
+    # simulasi penjualan
+    df['day_of_week'] = df['date'].dt.dayofweek
+    weekend_effect = np.where(df['day_of_week'] >= 5, 15, 0)
+    
+    price_sensitivity = (df['base_price_ref'] - df['price']) / 1000
+    
+    time_index = np.arange(N_ROWS)
+    seasonality = 8 * np.sin(time_index * (2 * np.pi / 30))
+
+    base_sales = 20
+    noise = np.random.normal(0, 5, N_ROWS)
+    
+    simulated_qty = base_sales + df['popularity_ref'] + weekend_effect + price_sensitivity + seasonality + noise
+    
+    df['quantity'] = np.maximum(0, simulated_qty).round().astype(int)
+
+    # bersihkan dan simpan
+    df = df.drop(columns=['base_price_ref', 'popularity_ref'])
+
+    df.to_csv(OUTPUT_FILE, index=False)
+    print(f"data berhasil disimpan ke {OUTPUT_FILE}")
+    print("preview data:")
+    print(df.head())
+
+if __name__ == "__main__":
+    generate_data()
