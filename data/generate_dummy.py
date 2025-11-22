@@ -4,9 +4,9 @@ from datetime import datetime, timedelta
 import ulid
 
 # konfigurasi
-OUTPUT_FILE = 'data_penjualan_dummy.csv'
-N_ROWS = 1000
-N_VARIANTS = 5 
+OUTPUT_FILE = 'data/data_penjualan_dummy.csv'
+N_ROWS = 100000
+N_VARIANTS = 100
 
 def generate_data():
     print(f"generating {N_ROWS} rows of dummy data with ulid...")

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # konfigurasi
 URL = "http://127.0.0.1:8000/predict-stock"
 MODEL_DIR = "models/"
-TOTAL_REQUESTS = 5
+TOTAL_REQUESTS = 1000
 
 def get_test_variant_id():
     # ambil salah satu model yang ada di folder models
