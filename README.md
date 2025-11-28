@@ -1,37 +1,43 @@
 # rahma-cell-backend-ai
 
-rahma-cell-backend-ai is an AI model for stock inventory prediction based on SVR algorithm.
+rahma-cell-backend-ai adalah API model AI yang digunakan untuk memprediksi stok inventori barang dengan algoritma SVR.
 
 ## Setup
 
-Create your own python virtual environment.
+Buat virtual environment.
 
 ```bash
 python -m venv venv
 ```
 
-Activate the virtual environment.
+Aktifkan virtual environment.
 
 ```bash
 .\venv\Scripts\activate.bat
 ```
 
-Install required library.
+Install library yang diperlukan.
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Generate dummy data (actual data is more recommended).
+Generate dummy data (data aktual lebih disarankan).
 
 ```bash
 python  /data/generate_dummy.py
 ```
 
-Train the model.
+Latih model.
 
 ```bash
 python  /src/train.py
+```
+
+Jalankan server API.
+
+```bash
+uvicorn src.main:app --reload
 ```
 
 ## License
