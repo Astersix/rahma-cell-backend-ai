@@ -31,18 +31,18 @@ def feature_engineering(df):
     df = df.dropna()
     return df
 
-def train_for_variant(df_variant, variant_id):
+def train_variant(df_variant, variant_id):
     print(f"\nprocessing variant: {variant_id}")
     
     if len(df_variant) < MIN_DATA_POINTS:
         print(f"skip: insufficient data ({len(df_variant)} rows)")
-        return
+        return None
 
     df_processed = feature_engineering(df_variant.copy())
     
     if len(df_processed) < 30:
         print("skip: insufficient data after processing")
-        return
+        return None
 
     features = ['price', 'day_of_week', 'is_weekend', 
                 'lag_1', 'lag_7', 'rolling_mean_7', 'rolling_std_7']
@@ -89,22 +89,31 @@ def train_for_variant(df_variant, variant_id):
     rmse = np.sqrt(mse)
     
     print(f"success. mse: {mse:.4f}, rmse: {rmse:.4f}")
+    
+    # save models
+    joblib.dump(best_model, f'{MODEL_PATH}svr_model_{variant_id}.joblib')
+    joblib.dump(scaler_X, f'{MODEL_PATH}scaler_X_{variant_id}.joblib')
+    joblib.dump(features, f'{MODEL_PATH}features_{variant_id}.joblib')
+    
+    # return data untuk chart
+    return {
+        'y_test_actual': y_test_actual,
+        'y_pred': y_pred,
+        'rmse': rmse
+    }
 
-    # plotting
+def generate_prediction_chart(y_test_actual, y_pred, variant_id, rmse):
     plt.figure(figsize=(10, 5))
     plt.plot(y_test_actual.reset_index(drop=True), label='Actual', color='green', alpha=0.7)
     plt.plot(y_pred, label='Prediction (SVR)', color='red', linestyle='--', alpha=0.8)
-    plt.title(f'SVR Optimized - {variant_id}\nRMSE: {rmse:.2f}')
+    plt.title(f'SVR Optimized - {variant_id}\\nRMSE: {rmse:.2f}')
     plt.legend()
     plt.grid(True, alpha=0.3)
     
     os.makedirs(MODEL_PATH, exist_ok=True)
     plt.savefig(f'{MODEL_PATH}plot_{variant_id}.png')
     plt.close()
-    
-    joblib.dump(best_model, f'{MODEL_PATH}svr_model_{variant_id}.joblib')
-    joblib.dump(scaler_X, f'{MODEL_PATH}scaler_X_{variant_id}.joblib')
-    joblib.dump(features, f'{MODEL_PATH}features_{variant_id}.joblib')
+    print(f"chart saved: {MODEL_PATH}plot_{variant_id}.png")
 
 if __name__ == "__main__":
     print("--- starting batch training (svr optimized) ---")
@@ -116,9 +125,18 @@ if __name__ == "__main__":
         
     unique_variants = df_all['product_variant_id'].unique()
     for i, variant_id in enumerate(unique_variants):
-        print(f"\n[{i+1}/{len(unique_variants)}] processing {variant_id}")
+        print(f"\\n[{i+1}/{len(unique_variants)}] processing {variant_id}")
         df_variant = df_all[df_all['product_variant_id'] == variant_id].sort_values('date')
         try:
-            train_for_variant(df_variant, variant_id)
+            # Train dan dapatkan metrics
+            result = train_variant(df_variant, variant_id)
+            
+            if result:
+                generate_prediction_chart(
+                    result['y_test_actual'],
+                    result['y_pred'],
+                    variant_id,
+                    result['rmse']
+                )
         except Exception as e:
             print(f"failed: {str(e)}")
