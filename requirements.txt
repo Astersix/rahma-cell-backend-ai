@@ -7,3 +7,6 @@ matplotlib
 python-ulid
 psutil
 request
+python-dotenv
+pymysql
+sqlalchemy
