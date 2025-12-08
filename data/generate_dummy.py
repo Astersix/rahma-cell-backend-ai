@@ -7,6 +7,7 @@ import ulid
 OUTPUT_FILE = 'data/data_penjualan_dummy.csv'
 N_ROWS = 100000
 N_VARIANTS = 100
+N_CATEGORIES = 5
 
 def generate_data():
     print(f"generating {N_ROWS} rows of dummy data with ulid...")
@@ -19,31 +20,41 @@ def generate_data():
     df = pd.DataFrame()
     df['date'] = dates
     
-    # --- BAGIAN GENERATE ULID ---
-    variants_db = {}
+    # generate category ids
+    category_ids = [str(ulid.ULID()) for _ in range(N_CATEGORIES)]
+    print(f"generated {N_CATEGORIES} category ids (ulid):")
+    for cat_id in category_ids:
+        print(f"- {cat_id}")
     
-    print("generated variant ids (ulid):")
+    variants_db = {}
+    product_ids = {}
+    
+    print(f"\ngenerated {N_VARIANTS} variant and product ids (ulid):")
     for i in range(N_VARIANTS):
-        # PERBAIKAN DI SINI:
-        # Gunakan ulid.ULID() untuk membuat instance baru
-        u_id = str(ulid.ULID()) 
+        # Generate ULID untuk variant_id
+        variant_id = str(ulid.ULID())
+        # Generate ULID BERBEDA untuk product_id
+        product_id = str(ulid.ULID())
         
         # tentukan karakteristik
         base_price = np.random.randint(50, 150) * 1000 
         popularity = np.random.randint(0, 20) 
         
-        variants_db[u_id] = {
+        variants_db[variant_id] = {
             'base_price': base_price,
             'popularity': popularity
         }
-        print(f"- {u_id} (price: {base_price}, popularity: {popularity})")
+        product_ids[variant_id] = product_id
+        print(f"- variant: {variant_id}, product: {product_id} (price: {base_price}, popularity: {popularity})")
 
     available_ulids = list(variants_db.keys())
 
-    # assign variant id secara acak
+    # assign variant id dan product id secara acak
     df['product_variant_id'] = np.random.choice(available_ulids, N_ROWS)
+    df['product_id'] = df['product_variant_id'].apply(lambda v: product_ids[v])
     
-    df['category_id'] = 101 
+    # assign category id secara acak dari kategori yang ada
+    df['category_id'] = np.random.choice(category_ids, N_ROWS)
     
     # helper functions
     def get_base_price(uid):

@@ -7,16 +7,60 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 import os
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.orm import Session
+
+# Load environment variables
+load_dotenv()
 
 # configuration
-FILE_PATH = 'data/data_penjualan_dummy.csv'
 MODEL_PATH = 'models/'
-MIN_DATA_POINTS = 50 
+MIN_DATA_POINTS = 50
 
-def load_data(filepath):
-    df = pd.read_csv(filepath)
-    df['date'] = pd.to_datetime(df['date'])
-    return df
+# Setup database connection
+try:
+    engine = create_engine(os.getenv('DATABASE_URL'))
+    Base = automap_base()
+    Base.prepare(autoload_with=engine)
+    
+    # Access to tables
+    order = Base.classes.order
+    order_product = Base.classes.order_product
+    DB_AVAILABLE = True
+except Exception as e:
+    print(f"Warning: Database connection failed - {str(e)}")
+    DB_AVAILABLE = False 
+
+def fetch_training_data(product_variant_id=None):
+    if not DB_AVAILABLE:
+        raise Exception("Database connection not available")
+    
+    with Session(engine) as session:
+        query = session.query(
+            order_product.product_variant_id,
+            order.created_at.label('date'),
+            order_product.quantity,
+            order_product.price,
+        ).join(order, order.id == order_product.order_id).filter(order.status == 'selesai')
+
+        if product_variant_id:
+            query = query.filter(order_product.product_variant_id == product_variant_id)
+        
+        query = query.order_by(order.created_at.asc())
+
+        # Convert to DataFrame
+        df = pd.read_sql(query.statement, session.bind)
+        
+        # Convert all column names to strings (fix for SQLAlchemy quoted_name issue)
+        df.columns = df.columns.astype(str)
+        
+        # Ensure date is in datetime format
+        df['date'] = pd.to_datetime(df['date'])
+        
+        print(f"Fetched {len(df)} records from database")
+        return df
 
 def feature_engineering(df):
     # time features
@@ -29,6 +73,10 @@ def feature_engineering(df):
     df['rolling_std_7'] = df['quantity'].shift(1).rolling(window=7).std()
     
     df = df.dropna()
+    
+    # Ensure all column names are strings (fix for SQLAlchemy quoted_name)
+    df.columns = df.columns.astype(str)
+    
     return df
 
 def train_variant(df_variant, variant_id):
@@ -50,6 +98,8 @@ def train_variant(df_variant, variant_id):
     
     X = df_processed[features]
     y = df_processed[target]
+    
+    X = X.rename(str, axis="columns")
     
     y_log = np.log1p(y)
     
@@ -106,7 +156,7 @@ def generate_prediction_chart(y_test_actual, y_pred, variant_id, rmse):
     plt.figure(figsize=(10, 5))
     plt.plot(y_test_actual.reset_index(drop=True), label='Actual', color='green', alpha=0.7)
     plt.plot(y_pred, label='Prediction (SVR)', color='red', linestyle='--', alpha=0.8)
-    plt.title(f'SVR Optimized - {variant_id}\\nRMSE: {rmse:.2f}')
+    plt.title(f'SVR Optimized - {variant_id}\nRMSE: {rmse:.2f}')
     plt.legend()
     plt.grid(True, alpha=0.3)
     
@@ -116,16 +166,26 @@ def generate_prediction_chart(y_test_actual, y_pred, variant_id, rmse):
     print(f"chart saved: {MODEL_PATH}plot_{variant_id}.png")
 
 if __name__ == "__main__":
-    print("--- starting batch training (svr optimized) ---")
+    # buat direktori baru
+    os.makedirs(MODEL_PATH, exist_ok=True)
+    
     try:
-        df_all = load_data(FILE_PATH)
-    except FileNotFoundError:
-        print("error: csv file not found")
+        # ambil semua data dari db
+        df_all = fetch_training_data()
+        
+        if df_all.empty:
+            print("error: no training data found in database")
+            exit()
+            
+    except Exception as e:
+        print(f"error: failed to fetch data - {str(e)}")
         exit()
         
     unique_variants = df_all['product_variant_id'].unique()
+    print(f"found {len(unique_variants)} unique product variants")
+    
     for i, variant_id in enumerate(unique_variants):
-        print(f"\\n[{i+1}/{len(unique_variants)}] processing {variant_id}")
+        print(f"\n[{i+1}/{len(unique_variants)}] processing {variant_id}")
         df_variant = df_all[df_all['product_variant_id'] == variant_id].sort_values('date')
         try:
             # Train dan dapatkan metrics

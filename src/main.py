@@ -102,6 +102,10 @@ def predict_stock(request: StockPredictionRequest):
             
     total_restock = sum(predictions)
     
+    # Log predictions for debugging
+    logger.info(f"Raw predictions for {variant_id}: {predictions}")
+    logger.info(f"Rounded predictions: {[round(x, 2) for x in predictions]}")
+    
     return {
         "product_variant_id": variant_id,
         "prediction_period": "next 7 days",
