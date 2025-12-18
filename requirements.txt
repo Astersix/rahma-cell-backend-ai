@@ -6,7 +6,7 @@ joblib
 matplotlib
 python-ulid
 psutil
-request
+requests
 python-dotenv
 pymysql
 sqlalchemy
