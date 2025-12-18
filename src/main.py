@@ -8,14 +8,23 @@ from datetime import datetime, timedelta
 import os
 from functools import lru_cache
 import logging
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from filelock import FileLock
+from pathlib import Path
 
 # setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# setup rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI()
+app.state.limiter = limiter
 
 MODEL_PATH = 'models/'
+LOCK_FILE = "models/.retrain.lock"
 
 class StockPredictionRequest(BaseModel):
     product_variant_id: str 
@@ -41,8 +50,21 @@ def load_model_resources(variant_id: str):
         return None
 
 @app.post("/predict-stock")
+@limiter.limit("30/minute")  # Rate limit: 30 requests per minute per IP
 def predict_stock(request: StockPredictionRequest):
     variant_id = request.product_variant_id
+    
+    # Check if retraining is in progress
+    if os.path.exists(LOCK_FILE):
+        try:
+            lock = FileLock(LOCK_FILE, timeout=0.1)
+            lock.acquire()
+            lock.release()
+        except:
+            raise HTTPException(
+                status_code=503,
+                detail="System is currently retraining models. Please try again in a few moments."
+            )
     
     # load resources
     resources = load_model_resources(variant_id)
