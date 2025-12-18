@@ -11,7 +11,6 @@ import logging
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from filelock import FileLock
-from pathlib import Path
 
 # setup logging
 logging.basicConfig(level=logging.INFO)
