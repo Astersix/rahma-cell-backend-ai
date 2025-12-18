@@ -72,6 +72,11 @@ def feature_engineering(df):
     df['rolling_mean_7'] = df['quantity'].shift(1).rolling(window=7).mean()
     df['rolling_std_7'] = df['quantity'].shift(1).rolling(window=7).std()
     
+    # Stock-related features
+    df['cumulative_quantity'] = df['quantity'].cumsum()  # Total cumulative stock sold
+    df['rolling_sum_7'] = df['quantity'].shift(1).rolling(window=7).sum()  # Total quantity in last 7 days
+    df['stock_velocity'] = df['quantity'].rolling(window=7).mean()  # Average daily stock movement
+    
     df = df.dropna()
     
     # Ensure all column names are strings (fix for SQLAlchemy quoted_name)
@@ -93,7 +98,8 @@ def train_variant(df_variant, variant_id):
         return None
 
     features = ['price', 'day_of_week', 'is_weekend', 
-                'lag_1', 'lag_7', 'rolling_mean_7', 'rolling_std_7']
+                'lag_1', 'lag_7', 'rolling_mean_7', 'rolling_std_7',
+                'cumulative_quantity', 'rolling_sum_7', 'stock_velocity']
     target = 'quantity'
     
     X = df_processed[features]
