@@ -81,7 +81,6 @@ def predict_stock(request: Request, stock_request: StockPredictionRequest):
         raise HTTPException(status_code=400, detail="invalid date format")
     
     predictions = []
-    cumulative_quantity = 0
     
     for i in range(7):
         next_date = current_date + timedelta(days=i+1)
@@ -98,11 +97,6 @@ def predict_stock(request: Request, stock_request: StockPredictionRequest):
         rolling_mean_7 = np.mean(current_window_7)
         rolling_std_7 = np.std(current_window_7, ddof=1) if len(current_window_7) > 1 else 0.0
         
-        # Stock-related features
-        rolling_sum_7 = np.sum(current_window_7)  # Total quantity in last 7 days
-        cumulative_quantity += temp_history[-1]  # Running cumulative quantity
-        stock_velocity = rolling_mean_7  # Average daily stock movement
-        
         input_features = pd.DataFrame([{
             'price': stock_request.price,
             'day_of_week': day_of_week,
@@ -110,10 +104,7 @@ def predict_stock(request: Request, stock_request: StockPredictionRequest):
             'lag_1': lag_1,
             'lag_7': lag_7,
             'rolling_mean_7': rolling_mean_7,
-            'rolling_std_7': rolling_std_7,
-            'cumulative_quantity': cumulative_quantity,
-            'rolling_sum_7': rolling_sum_7,
-            'stock_velocity': stock_velocity
+            'rolling_std_7': rolling_std_7
         }])
         
         # scaling & predict
