@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import List
 import joblib
@@ -50,8 +50,8 @@ def load_model_resources(variant_id: str):
 
 @app.post("/predict-stock")
 @limiter.limit("30/minute")  # Rate limit: 30 requests per minute per IP
-def predict_stock(request: StockPredictionRequest):
-    variant_id = request.product_variant_id
+def predict_stock(request: Request, stock_request: StockPredictionRequest):
+    variant_id = stock_request.product_variant_id
     
     # Check if retraining is in progress
     if os.path.exists(LOCK_FILE):
@@ -72,11 +72,11 @@ def predict_stock(request: StockPredictionRequest):
     
     model, scaler_X = resources
     
-    history = list(request.sales_history_30_days)
+    history = list(stock_request.sales_history_30_days)
     temp_history = list(history)
     
     try:
-        current_date = datetime.strptime(request.last_transaction_date, "%Y-%m-%d")
+        current_date = datetime.strptime(stock_request.last_transaction_date, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(status_code=400, detail="invalid date format")
     
@@ -98,7 +98,7 @@ def predict_stock(request: StockPredictionRequest):
         rolling_std_7 = np.std(current_window_7, ddof=1) if len(current_window_7) > 1 else 0.0
         
         input_features = pd.DataFrame([{
-            'price': request.price,
+            'price': stock_request.price,
             'day_of_week': day_of_week,
             'is_weekend': is_weekend,
             'lag_1': lag_1,
