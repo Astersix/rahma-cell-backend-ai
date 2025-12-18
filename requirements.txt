@@ -10,3 +10,5 @@ requests
 python-dotenv
 pymysql
 sqlalchemy
+filelock
+slowapi
