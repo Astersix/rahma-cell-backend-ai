@@ -42,20 +42,17 @@ PORT=8000
 
 > **Tip:** Copy dari `.env.example` dan sesuaikan dengan konfigurasi Anda.
 
-### 4. Training Model
+**Option A: Training dari Database (Recommended)**
 
-**Option A: Training dari CSV (Development)**
 ```bash
-# Generate dummy data
-python data/generate_dummy.py
-
-# Train model
+# Train model dengan data dari database
 python src/train.py
 ```
 
-**Option B: Retraining dari Database (Production)**
+**Option B: Retraining Model yang Sudah Ada**
+
 ```bash
-# Retrain dengan data real dari database
+# Retrain semua model dengan data terbaru
 python src/retrain.py
 ```
 
@@ -84,7 +81,8 @@ POST /predict-stock
   "price": 15000,
   "category_id": 1,
   "last_transaction_date": "2025-11-28",
-  "sales_history_30_days": [5, 7, 6, 8, 10, ...]
+  "sales_history_30_days": [5, 7, 6, 8, 10, ...],
+  "current_stock": 50  // Optional: defaults to 0, will be fetched from database if not provided
 }
 ```
 
@@ -93,22 +91,27 @@ POST /predict-stock
 {
   "product_variant_id": "PROD001",
   "prediction_period": "next 7 days",
-  "daily_predictions": [8.5, 9.2, 7.8, ...],
-  "total_restock_recommended": 58
+  "daily_predictions": [8.5, 9.2, 7.8, 10.1, 9.5, 11.2, 8.9],
+  "total_restock_recommended": 8  // Additional stock needed = max(0, forecast - current_stock)
 }
 ```
+
+> **Note:** `total_restock_recommended` represents the additional stock needed beyond current inventory. If current stock is sufficient, this value will be 0.
+
+**Rate Limiting:** 30 requests per minute per IP address
 
 ## 🏗️ Project Structure
 
 ```
 rahma-cell-backend-ai/
 ├── src/
-│   ├── main.py          # FastAPI application
-│   ├── train.py         # Initial training script
-│   └── retrain.py       # Retraining from database
+│   ├── main.py          # FastAPI application & prediction endpoint
+│   ├── train.py         # Initial training script from database
+│   ├── retrain.py       # Retraining script (with file locking)
+│   └── test.py          # Stress testing script
 ├── data/
-│   └── generate_dummy.py
-├── models/              # Saved models (.joblib)
+│   └── generate_dummy.py # Dummy data generator (deprecated)
+├── models/              # Saved models, scalers, features (.joblib)
 ├── requirements.txt
 ├── .env                 # Environment variables (gitignored)
 └── README.md
@@ -116,18 +119,39 @@ rahma-cell-backend-ai/
 
 ## 🧠 Model Details
 
-**Algorithm:** Support Vector Regression (SVR)
+**Algorithm:** Support Vector Regression (SVR) with GridSearchCV hyperparameter tuning
 
-**Features:**
-- `price` - Harga produk
+**Features:** (19 total - dinamically selected based on available data)
+
+
+*Temporal Features:*
+
 - `day_of_week` - Hari dalam seminggu (0-6)
-- `is_weekend` - Binary weekend indicator
-- `lag_1` - Penjualan 1 hari sebelumnya
-- `lag_7` - Penjualan 7 hari sebelumnya
-- `rolling_mean_7` - Mean 7 hari terakhir
-- `rolling_std_7` - Standard deviation 7 hari
+- `is_weekend` - Binary weekend indicator (1 = weekend, 0 = weekday)
+- `day` - Tanggal dalam bulan (1-31)
+- `trend` - Indeks waktu linear
 
-**Target:** `quantity` (jumlah terjual)
+*Price Feature:*
+
+- `price` - Harga produk (rata-rata untuk hari tersebut)
+
+
+*Lag Features:*
+
+- `lag_1` to `lag_5` - Penjualan 1-5 hari sebelumnya
+
+*Rolling Statistics:*
+- `rolling_mean_3` - Mean 3 hari terakhir
+- `rolling_std_3` - Standard deviation 3 hari
+- `rolling_min_3` - Minimum 3 hari terakhir
+- `rolling_max_3` - Maximum 3 hari terakhir
+
+*Momentum Features:*
+
+- `momentum` - Perubahan penjualan dari hari sebelumnya
+- `momentum_3` - Perubahan penjualan dalam 3 hari
+
+**Target:** `quantity` (jumlah terjual per hari - log transformed)
 
 ## 🔧 Advanced Usage
 
@@ -135,8 +159,8 @@ rahma-cell-backend-ai/
 
 Edit `src/train.py`:
 ```python
-MIN_DATA_POINTS = 50          # Minimum data points per variant
-MAX_VARIANTS_TO_TRAIN = None  # None = semua variant
+MIN_DATA_POINTS = 30          # Minimum data points per variant
+# Script trains all variants from database automatically
 ```
 
 ### Retraining Schedule
@@ -148,15 +172,27 @@ Setup scheduled retraining dengan cron (Linux/Mac) atau Task Scheduler (Windows)
 0 2 * * 0 cd /path/to/project && python src/retrain.py
 ```
 
+### Stress Testing
+
+Test performa API dengan `test.py`:
+
+```bash
+python src/test.py
+```
+
+Script akan melakukan 1000 request berturut-turut dan menampilkan:
+- Response time statistics (avg, min, max, p95)
+- Error rate
+- Grafik response time
+
+
 ## 📊 Model Performance
 
 Model di-evaluasi menggunakan metrics:
 - **RMSE** (Root Mean Squared Error)
-- **MAE** (Mean Absolute Error)
-- **MAPE** (Mean Absolute Percentage Error)
 - **R²** Score
 
-Learning curves disimpan di `models/learning_curve_{variant_id}.png`
+Prediction charts disimpan di `models/plot_{variant_id}.png`
 
 ## 📝 License
 
