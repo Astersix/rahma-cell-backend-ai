@@ -83,7 +83,7 @@ def feature_engineering(df):
     df['day'] = df['date'].dt.day
     
     for lag in range(1, 6):
-        df[f'lag_{lag}'] = df['quantity'].shift(lag).fillna(method='bfill').fillna(0)
+        df[f'lag_{lag}'] = df['quantity'].shift(lag).bfill().fillna(0)
     
     # rolling statistics - smaller windows for small datasets
     df['rolling_mean_3'] = df['quantity'].shift(1).rolling(window=3, min_periods=1).mean()
