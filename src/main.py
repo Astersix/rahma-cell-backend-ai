@@ -222,7 +222,5 @@ def predict_stock(request: Request, stock_request: StockPredictionRequest):
         "product_variant_id": variant_id,
         "prediction_period": "next 7 days",
         "daily_predictions": [round(x, 2) for x in predictions],
-
-
-        "total_restock_recommended": int(np.ceil(total_restock_recommended))
+        "total_restock_recommended": int(total_restock_recommended)
     }
