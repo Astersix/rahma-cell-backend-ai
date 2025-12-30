@@ -1,39 +1,32 @@
-# ⚙️ Backend Main Service - CV Rahma Cell
+# 🧠 AI Service - Stock Prediction Engine
 
-Repository ini adalah **Core Service** yang menangani seluruh logika bisnis, transaksi, dan manajemen data untuk Marketplace CV Rahma Cell. [cite_start]Layanan ini menghubungkan Frontend dengan Database dan Layanan AI\.
+Layanan mikro (Microservice) khusus yang dibangun menggunakan Python untuk melakukan analisis prediktif stok barang bagi **CV Rahma Cell**. Layanan ini membantu pemilik toko menghindari kekosongan stok (*stockout*) atau penumpukan barang (*overstock*).
 
-## 🛠 Tech Stack
-* **Runtime:** Node.js & Express.js 
-* **Database:** MySQL 
-* **ORM:** Prisma 
-* **Payment Gateway:** Midtrans (QRIS Integration) 
+## 🤖 Teknologi & Model
+* **Language:** Python 
+* **Framework:** FastAPI 
+* **Algoritma:** Support Vector Regression (SVR) 
+* **Library:** Scikit-learn, Pandas, NumPy 
 
-## 🔑 Fitur & Kapabilitas
-* **RESTful API:** Menyediakan endpoint untuk manajemen produk, user, dan order.
-* **Keamanan:** Autentikasi menggunakan JWT (JSON Web Token) dan proteksi password dengan Bcrypt
-* **Role-Based Access Control (RBAC):** Pemisahan hak akses antara Admin dan Customer.
-* **Integrasi AI:** Menghubungkan permintaan prediksi stok ke *AI Service*.
+## 📊 Fungsi Utama
+* **Training Model:** Melatih data historis penjualan untuk mengenali pola tren.
+* **Stock Prediction:** Memberikan rekomendasi jumlah restock produk.
+* **API Endpoint:** Menerima request data dari *Backend Main Service* dan mengembalikan hasil prediksi JSON.
 
-## 💻 Cara Menjalankan
+## 🧪 Cara Menjalankan
 
-1.  **Install dependencies:**
+1.  **Buat Virtual Environment:**
     ```bash
-    npm install
+    python -m venv venv
+    source venv/bin/activate  # (Windows: venv\Scripts\activate)
     ```
-2.  **Setup Database:**
-    Pastikan MySQL sudah berjalan, lalu konfigurasi file `.env`:
-    ```env
-    DATABASE_URL="mysql://user:password@localhost:3306/rahmacell_db"
-    JWT_SECRET="rahasia_anda"
-    PORT=3000
-    ```
-3.  **Migrasi Database:**
+2.  **Install Library:**
     ```bash
-    npx prisma migrate dev
+    pip install -r requirements.txt
     ```
-4.  **Jalankan Server:**
+3.  **Jalankan Server AI:**
     ```bash
-    npm run start:dev
+    uvicorn main:app --reload --port 8000
     ```
 
 ---
