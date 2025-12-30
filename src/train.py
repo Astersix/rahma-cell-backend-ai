@@ -189,14 +189,15 @@ def train_variant(df_variant, variant_id):
         'y_test_actual': y_test_actual,
         'y_pred': y_pred,
         'rmse': rmse,
-        'r2': r2
+        'r2': r2,
+        'mse': mse
     }
 
-def generate_prediction_chart(y_test_actual, y_pred, variant_id, rmse, r2):
+def generate_prediction_chart(y_test_actual, y_pred, variant_id, rmse, r2, mse):
     plt.figure(figsize=(10, 5))
     plt.plot(y_test_actual.reset_index(drop=True), label='Actual', color='green', alpha=0.7)
     plt.plot(y_pred, label='Prediction (SVR)', color='red', linestyle='--', alpha=0.8)
-    plt.title(f'SVR - {variant_id}\nRMSE: {rmse:.2f} | R²: {r2:.4f}')
+    plt.title(f'SVR - {variant_id}\nMSE: {mse:.4f} | RMSE: {rmse:.2f} | R²: {r2:.4f}')
     plt.legend()
     plt.grid(True, alpha=0.3)
     
@@ -237,7 +238,8 @@ if __name__ == "__main__":
                     result['y_pred'],
                     variant_id,
                     result['rmse'],
-                    result['r2']
+                    result['r2'],
+                    result['mse']
                 )
         except Exception as e:
             print(f"failed: {str(e)}")
