@@ -1,39 +1,40 @@
-# rahma-cell-backend-ai
+# ⚙️ Backend Main Service - CV Rahma Cell
 
-rahma-cell-backend-ai is an AI model for stock inventory prediction based on SVR algorithm.
+Repository ini adalah **Core Service** yang menangani seluruh logika bisnis, transaksi, dan manajemen data untuk Marketplace CV Rahma Cell. [cite_start]Layanan ini menghubungkan Frontend dengan Database dan Layanan AI\.
 
-## Setup
+## 🛠 Tech Stack
+* **Runtime:** Node.js & Express.js 
+* **Database:** MySQL 
+* **ORM:** Prisma 
+* **Payment Gateway:** Midtrans (QRIS Integration) 
 
-Create your own python virtual environment.
+## 🔑 Fitur & Kapabilitas
+* **RESTful API:** Menyediakan endpoint untuk manajemen produk, user, dan order.
+* **Keamanan:** Autentikasi menggunakan JWT (JSON Web Token) dan proteksi password dengan Bcrypt
+* **Role-Based Access Control (RBAC):** Pemisahan hak akses antara Admin dan Customer.
+* **Integrasi AI:** Menghubungkan permintaan prediksi stok ke *AI Service*.
 
-```bash
-python -m venv venv
-```
+## 💻 Cara Menjalankan
 
-Activate the virtual environment.
+1.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+2.  **Setup Database:**
+    Pastikan MySQL sudah berjalan, lalu konfigurasi file `.env`:
+    ```env
+    DATABASE_URL="mysql://user:password@localhost:3306/rahmacell_db"
+    JWT_SECRET="rahasia_anda"
+    PORT=3000
+    ```
+3.  **Migrasi Database:**
+    ```bash
+    npx prisma migrate dev
+    ```
+4.  **Jalankan Server:**
+    ```bash
+    npm run start:dev
+    ```
 
-```bash
-.\venv\Scripts\activate.bat
-```
-
-Install required library.
-
-```bash
-pip install -r requirements.txt
-```
-
-Generate dummy data (actual data is more recommended).
-
-```bash
-python  /data/generate_dummy.py
-```
-
-Train the model.
-
-```bash
-python  /src/train.py
-```
-
-## License
-
-[MIT](https://choosealicense.com/licenses/mit/)
+---
+**Developed by Astersix Team**
